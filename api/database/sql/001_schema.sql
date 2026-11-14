@@ -179,7 +179,8 @@ CREATE TABLE activity_log (
     action     text        NOT NULL CHECK (action IN
         ('created', 'updated', 'completed', 'reopened', 'deleted', 'restored', 'rescheduled')),
     payload    jsonb       NOT NULL DEFAULT '{}'::jsonb,
-    created_at timestamptz NOT NULL DEFAULT now()
+    -- clock_timestamp() e não now(): várias linhas da mesma transação ficam por ordem.
+    created_at timestamptz NOT NULL DEFAULT clock_timestamp()
 );
 
 CREATE INDEX activity_log_user_created_index ON activity_log (user_id, created_at DESC);

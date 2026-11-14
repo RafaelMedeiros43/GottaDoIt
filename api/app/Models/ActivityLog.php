@@ -10,7 +10,8 @@ class ActivityLog extends Model
 {
     use BelongsToUser, HasUuids;
 
-    public const UPDATED_AT = null;
+    /** `created_at` é preenchido pela base de dados (clock_timestamp). */
+    public $timestamps = false;
 
     protected $table = 'activity_log';
 
@@ -18,6 +19,6 @@ class ActivityLog extends Model
 
     protected function casts(): array
     {
-        return ['payload' => 'array'];
+        return ['payload' => 'array', 'created_at' => 'immutable_datetime'];
     }
 }

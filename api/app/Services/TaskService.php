@@ -6,6 +6,8 @@ use App\Models\ActivityLog;
 use App\Models\Label;
 use App\Models\Project;
 use App\Models\Task;
+use App\Support\Recurrence;
+use Carbon\CarbonImmutable;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Collection;
@@ -109,6 +111,59 @@ class TaskService
         }
 
         return $tasks;
+    }
+
+    /**
+     * Conclui a tarefa. Uma tarefa recorrente não fecha: avança para a próxima
+     * ocorrência e a conclusão fica no registo de atividade.
+     *
+     * @return bool se a tarefa foi reagendada por ser recorrente
+     */
+    public function complete(Task $task, CarbonImmutable $today): bool
+    {
+        if ($task->is_completed) {
+            return false;
+        }
+
+        $occurrence = $task->due_date?->toDateString();
+
+        if ($task->isRecurring() && $task->due_date) {
+            $next = Recurrence::next($task->recurrence_rule, $task->due_date, $today)->toDateString();
+            $task->update(['due_date' => $next]);
+            $this->log($task, 'completed', [
+                'occurrence_date' => $occurrence, 'previous_due_date' => $occurrence, 'next_due_date' => $next,
+            ]);
+
+            return true;
+        }
+
+        $task->forceFill(['is_completed' => true, 'completed_at' => now()])->save();
+        $this->log($task, 'completed', ['occurrence_date' => $occurrence]);
+
+        return false;
+    }
+
+    /** Desfaz a última conclusão, se houver alguma por desfazer. */
+    public function reopen(Task $task): void
+    {
+        if ($task->is_completed) {
+            $task->forceFill(['is_completed' => false, 'completed_at' => null])->save();
+            $this->log($task, 'reopened');
+
+            return;
+        }
+
+        $last = ActivityLog::where('task_id', $task->id)
+            ->whereIn('action', ['completed', 'reopened'])
+            ->orderByDesc('created_at')
+            ->first();
+
+        $previous = $last?->action === 'completed' ? ($last->payload['previous_due_date'] ?? null) : null;
+
+        if ($previous !== null) {
+            $task->update(['due_date' => $previous]);
+            $this->log($task, 'reopened', ['due_date' => $previous]);
+        }
     }
 
     public function log(Task $task, string $action, array $payload = []): ActivityLog

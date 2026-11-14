@@ -4,6 +4,7 @@ use App\Http\Controllers\Api\V1\AuthController;
 use App\Http\Controllers\Api\V1\LabelController;
 use App\Http\Controllers\Api\V1\MeController;
 use App\Http\Controllers\Api\V1\ProjectController;
+use App\Http\Controllers\Api\V1\TaskCompletionController;
 use App\Http\Controllers\Api\V1\TaskController;
 use Illuminate\Support\Facades\Route;
 
@@ -28,6 +29,8 @@ Route::prefix('v1')->group(function () {
         Route::post('tasks/reschedule', [TaskController::class, 'reschedule']);
         Route::patch('tasks/{task}', [TaskController::class, 'update']);
         Route::delete('tasks/{task}', [TaskController::class, 'destroy']);
+        Route::post('tasks/{task}/complete', [TaskCompletionController::class, 'complete']);
+        Route::post('tasks/{task}/reopen', [TaskCompletionController::class, 'reopen']);
         Route::post('tasks/{task}/restore', [TaskController::class, 'restore'])->withTrashed();
     });
 });
