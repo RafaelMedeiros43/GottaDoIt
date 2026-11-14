@@ -4,19 +4,21 @@ import { SAVE_ERROR, taskToastId } from './undo-toast'
 import { api } from '@/lib/api'
 import type { Label, NewTask, Project, Task } from '@/lib/types'
 
-export interface TodayResponse {
+export interface TaskListResponse {
   data: Task[]
   /** `today` é a data de hoje no fuso do utilizador. */
   meta: { today: string }
 }
 
 export const TODAY_KEY = ['tasks', 'today'] as const
+export const INBOX_KEY = ['tasks', 'inbox'] as const
+const ALL_TASKS_KEY = ['tasks'] as const
 const MUTATION_KEY = ['tasks'] as const
 
-/** A mesma ordem da API: data, hora (sem hora no fim), prioridade, posição. */
-export function sortTasks(tasks: Task[]): Task[] {
-  const text = (a: string | null, b: string | null) => (a ?? '￿').localeCompare(b ?? '￿')
+const text = (a: string | null, b: string | null) => (a ?? '￿').localeCompare(b ?? '￿')
 
+/** A ordem de "Hoje" na API: data, hora (sem hora no fim), prioridade, posição. */
+export function sortTasks(tasks: Task[]): Task[] {
   return [...tasks].sort(
     (a, b) =>
       text(a.due_date, b.due_date) ||
@@ -26,10 +28,32 @@ export function sortTasks(tasks: Task[]): Task[] {
   )
 }
 
+/** A ordem da Caixa de Entrada na API: posição e, em caso de empate, a mais antiga primeiro. */
+export function sortInboxTasks(tasks: Task[]): Task[] {
+  return [...tasks].sort((a, b) => a.position - b.position || text(a.created_at, b.created_at))
+}
+
+/** O que decide em que listas uma tarefa aparece. */
+type Placement = Pick<Task, 'due_date' | 'project_id' | 'parent_task_id'>
+
+interface TaskList {
+  key: readonly string[]
+  holds: (task: Placement, today: string) => boolean
+  sort: (tasks: Task[]) => Task[]
+}
+
+/** As listas em cache que uma escrita tem de manter atualizadas. */
+const TASK_LISTS: TaskList[] = [
+  // "Hoje": o que vence hoje ou já está em atraso.
+  { key: TODAY_KEY, holds: (task, today) => task.due_date !== null && task.due_date <= today, sort: sortTasks },
+  // Caixa de Entrada: o que não tem projeto nem é subtarefa, com ou sem data.
+  { key: INBOX_KEY, holds: (task) => task.project_id === null && task.parent_task_id === null, sort: sortInboxTasks },
+]
+
 export function useTodayTasks() {
   const query = useQuery({
     queryKey: TODAY_KEY,
-    queryFn: () => api<TodayResponse>('/tasks?view=today'),
+    queryFn: () => api<TaskListResponse>('/tasks?view=today'),
   })
 
   const tasks = query.data?.data ?? []
@@ -39,6 +63,21 @@ export function useTodayTasks() {
     overdue: tasks.filter((task) => todayDate !== null && task.due_date !== null && task.due_date < todayDate),
     today: tasks.filter((task) => todayDate === null || task.due_date === null || task.due_date >= todayDate),
     todayDate,
+    isLoading: query.isPending,
+    isError: query.isError,
+    refetch: query.refetch,
+  }
+}
+
+export function useInboxTasks() {
+  const query = useQuery({
+    queryKey: INBOX_KEY,
+    queryFn: () => api<TaskListResponse>('/tasks?view=inbox'),
+  })
+
+  return {
+    tasks: query.data?.data ?? [],
+    todayDate: query.data?.meta.today ?? null,
     isLoading: query.isPending,
     isError: query.isError,
     refetch: query.refetch,
@@ -55,8 +94,11 @@ export function useLabels() {
 
 interface OptimisticOptions<V> {
   mutationFn: (variables: V) => Promise<unknown>
-  /** Como a lista de "Hoje" fica depois da alteração, antes de o servidor responder. */
-  apply: (tasks: Task[], variables: V, today: string) => Task[]
+  /**
+   * Como uma lista fica depois da alteração, antes de o servidor responder.
+   * `holds` diz se uma tarefa pertence à lista que está a ser atualizada.
+   */
+  apply: (tasks: Task[], variables: V, holds: (task: Placement) => boolean) => Task[]
   /** O aviso que um erro deve substituir (o "Desfazer" da mesma tarefa). */
   toastId?: (variables: V) => string
   /** Outras listas a recarregar no fim. */
@@ -76,27 +118,33 @@ export function useOptimisticTaskMutation<V>({ mutationFn, apply, toastId, alsoI
     scope: { id: 'tasks' },
     mutationFn,
     onMutate: async (variables: V) => {
-      await queryClient.cancelQueries({ queryKey: TODAY_KEY })
-      const previous = queryClient.getQueryData<TodayResponse>(TODAY_KEY)
+      await queryClient.cancelQueries({ queryKey: ALL_TASKS_KEY })
 
-      if (previous) {
-        queryClient.setQueryData<TodayResponse>(TODAY_KEY, {
-          ...previous,
-          data: sortTasks(apply(previous.data, variables, previous.meta.today)),
+      // Só as listas já carregadas; as outras vão buscar o estado novo ao servidor.
+      const previous = TASK_LISTS.flatMap((list) => {
+        const data = queryClient.getQueryData<TaskListResponse>(list.key)
+        return data ? [{ list, data }] : []
+      })
+
+      previous.forEach(({ list, data }) => {
+        const today = data.meta.today
+        queryClient.setQueryData<TaskListResponse>(list.key, {
+          ...data,
+          data: list.sort(apply(data.data, variables, (task) => list.holds(task, today))),
         })
-      }
+      })
 
       return { previous }
     },
     onError: (_error, variables, context) => {
-      if (context?.previous) queryClient.setQueryData(TODAY_KEY, context.previous)
+      context?.previous.forEach(({ list, data }) => queryClient.setQueryData(list.key, data))
       toast.error(SAVE_ERROR, { id: toastId?.(variables) })
     },
     onSettled: () => {
       // Só recarrega quando já não há mais escritas a caminho, para não
       // mostrar por instantes um estado antigo.
       if (queryClient.isMutating({ mutationKey: MUTATION_KEY }) === 1) {
-        queryClient.invalidateQueries({ queryKey: TODAY_KEY })
+        queryClient.invalidateQueries({ queryKey: ALL_TASKS_KEY })
         alsoInvalidate.forEach((queryKey) => queryClient.invalidateQueries({ queryKey }))
       }
     },
@@ -104,7 +152,8 @@ export function useOptimisticTaskMutation<V>({ mutationFn, apply, toastId, alsoI
 }
 
 const without = (tasks: Task[], task: Task) => tasks.filter((other) => other.id !== task.id)
-const withTask = (tasks: Task[], task: Task) => [...without(tasks, task), task]
+const withTask = (tasks: Task[], task: Task, holds: (task: Placement) => boolean) =>
+  holds(task) ? [...without(tasks, task), task] : tasks
 const toastOf = (task: Task) => taskToastId(task.id)
 
 export function useCompleteTask() {
@@ -176,9 +225,12 @@ function optimisticTask(input: NewTask): Task {
 export function useCreateTask() {
   return useOptimisticTaskMutation<NewTask>({
     mutationFn: (input) => api('/tasks', { method: 'POST', body: input }),
-    // Só entra em "Hoje" o que vence hoje ou já está em atraso.
-    apply: (tasks, input, today) =>
-      input.due_date !== null && input.due_date <= today ? [...tasks, optimisticTask(input)] : tasks,
+    // Com projeto no texto, a tarefa não vai para a Caixa de Entrada; o id do
+    // projeto ainda não se conhece, por isso o nome faz as vezes dele.
+    apply: (tasks, input, holds) =>
+      holds({ due_date: input.due_date, project_id: input.project_name, parent_task_id: null })
+        ? [...tasks, optimisticTask(input)]
+        : tasks,
     toastId: (input) => taskToastId(input.id),
     // O Quick Add pode ter criado um projeto ou etiquetas.
     alsoInvalidate: [['projects'], ['labels']],

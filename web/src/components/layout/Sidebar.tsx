@@ -6,7 +6,7 @@ import { useAuth } from '@/features/auth/AuthProvider'
 import { cn } from '@/lib/utils'
 
 const VIEWS = [
-  { to: '/caixa-de-entrada', label: 'Caixa de Entrada', icon: Inbox, available: false },
+  { to: '/caixa-de-entrada', label: 'Caixa de Entrada', icon: Inbox, available: true },
   { to: '/hoje', label: 'Hoje', icon: Sun, available: true },
   { to: '/em-breve', label: 'Em breve', icon: CalendarDays, available: false },
 ]

@@ -14,11 +14,14 @@ interface TaskItemProps {
   labels: Label[]
   onComplete: (task: Task) => void
   onDelete: (task: Task) => void
+  /** Mostra a data de todas as tarefas, e não só das que estão em atraso. */
+  showDate?: boolean
 }
 
-export function TaskItem({ task, today, project, labels, onComplete, onDelete }: TaskItemProps) {
+export function TaskItem({ task, today, project, labels, onComplete, onDelete, showDate = false }: TaskItemProps) {
   const overdue = task.due_date !== null && task.due_date < today
-  const hasDetails = overdue || task.due_time || task.recurrence_rule || project || labels.length > 0
+  const dated = task.due_date !== null && (overdue || showDate)
+  const hasDetails = dated || task.due_time || task.recurrence_rule || project || labels.length > 0
 
   return (
     <li className="group flex items-start gap-3 border-b py-2.5">
@@ -35,7 +38,11 @@ export function TaskItem({ task, today, project, labels, onComplete, onDelete }:
 
         {hasDetails && (
           <div className="mt-1 flex flex-wrap items-center gap-x-2.5 gap-y-1 text-xs text-muted-foreground">
-            {overdue && <span className="font-medium text-destructive">{formatDayLabel(task.due_date!, today)}</span>}
+            {dated && (
+              <span className={cn(overdue && 'font-medium text-destructive')}>
+                {formatDayLabel(task.due_date!, today)}
+              </span>
+            )}
             {task.due_time && <span className={cn(overdue && 'text-destructive')}>{task.due_time}</span>}
             {task.recurrence_rule && (
               <Repeat

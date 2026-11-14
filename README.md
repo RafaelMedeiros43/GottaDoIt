@@ -108,11 +108,16 @@ O Supabase entra só como PostgreSQL alojado; o login é do Laravel (Sanctum).
    cd api && php artisan migrate --database=pgsql_admin
    ```
 
-Os papéis públicos do Supabase (`anon`, `authenticated`) não recebem nenhuma
-política, por isso a API de dados automática do Supabase não expõe estas tabelas.
+Usa o Session pooler (botão Connect no painel): a ligação direta
+`db.<ref>.supabase.co` só funciona por IPv6.
 
-Isto ainda não foi testado contra um projeto Supabase real, só contra
-PostgreSQL 16 local.
+Os papéis públicos do Supabase (`anon`, `authenticated`) não recebem nenhuma
+política, e o esquema retira-lhes as permissões que o Supabase dá por omissão
+às tabelas de `public`. Assim a API de dados automática não expõe nada,
+incluindo `users` e `personal_access_tokens`, que não têm RLS.
+
+Testado contra um projeto Supabase (PostgreSQL 17, Session pooler): registo,
+criação e leitura de tarefas.
 
 ## Quick Add
 
@@ -140,7 +145,7 @@ Funciona com ou sem acentos. Regras a saber:
 ## O que ainda não existe
 
 Está desenhado no esquema e em `docs/api.md` (marcado como **Planeado**), mas
-sem código: Caixa de Entrada e Em Breve no frontend, quadro Kanban,
+sem código: Em Breve no frontend, quadro Kanban,
 drag-and-drop, filtros, painel de detalhes e subtarefas na interface, envio
 de lembretes (Web Push, e-mail, resumo diário), modo offline, navegação
 completa por teclado, recuperação de palavra-passe.

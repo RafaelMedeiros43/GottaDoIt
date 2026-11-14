@@ -1,16 +1,7 @@
 import { CircleCheckBig } from 'lucide-react'
 import { TaskItem } from './TaskItem'
-import {
-  useCompleteTask,
-  useDeleteTask,
-  useLabels,
-  useProjects,
-  useReopenTask,
-  useRescheduleTasks,
-  useRestoreTask,
-  useTodayTasks,
-} from './queries'
-import { showUndoToast, taskToastId } from './undo-toast'
+import { useLabels, useProjects, useRescheduleTasks, useTodayTasks } from './queries'
+import { useTaskActions } from './useTaskActions'
 import { Button } from '@/components/ui/button'
 import { formatLongDate } from '@/lib/dates'
 import type { Task } from '@/lib/types'
@@ -20,21 +11,8 @@ export function TodayPage() {
   const { data: projects = [] } = useProjects()
   const { data: labels = [] } = useLabels()
 
-  const complete = useCompleteTask()
-  const reopen = useReopenTask()
-  const remove = useDeleteTask()
-  const restore = useRestoreTask()
+  const { onComplete, onDelete } = useTaskActions()
   const reschedule = useRescheduleTasks()
-
-  function onComplete(task: Task) {
-    complete.mutate(task)
-    showUndoToast('Tarefa concluída', () => reopen.mutate(task), taskToastId(task.id))
-  }
-
-  function onDelete(task: Task) {
-    remove.mutate(task)
-    showUndoToast('Tarefa apagada', () => restore.mutate(task), taskToastId(task.id))
-  }
 
   const renderList = (tasks: Task[]) => (
     <ul className="border-t">
