@@ -245,3 +245,37 @@ describe('casos limite', () => {
     expect(parse('  Comprar   pão   amanhã  ').title).toBe('Comprar pão')
   })
 })
+
+describe('palavras ambíguas', () => {
+  it('um dia da semana a meio da frase é texto ("segunda via")', () => {
+    for (const input of ['Pedir segunda via da fatura', 'Rever quarta versão do contrato', 'sexta tentativa de ligar']) {
+      expect(parse(input)).toMatchObject({ title: input, dueDate: null, tokens: [] })
+    }
+  })
+
+  it('um dia da semana conta no fim da frase ou antes de outro marcador', () => {
+    expect(parse('Reunião segunda')).toMatchObject({ title: 'Reunião', dueDate: '2026-11-16' })
+    expect(parse('Reunião segunda às 15h')).toMatchObject({ title: 'Reunião', dueDate: '2026-11-16', dueTime: '15:00' })
+    expect(parse('Dentista quarta #Saúde p2')).toMatchObject({ title: 'Dentista', dueDate: '2026-11-18' })
+  })
+
+  it('as formas sem ambiguidade contam em qualquer posição', () => {
+    expect(parse('segunda-feira rever plano')).toMatchObject({ title: 'rever plano', dueDate: '2026-11-16' })
+    expect(parse('na sexta rever plano')).toMatchObject({ title: 'rever plano', dueDate: '2026-11-20' })
+    expect(parse('próxima terça rever plano')).toMatchObject({ title: 'rever plano', dueDate: '2026-11-17' })
+    expect(parse('domingo limpar a casa')).toMatchObject({ title: 'limpar a casa', dueDate: '2026-11-15' })
+  })
+
+  it('poucas horas sem "às" são uma duração, não uma hora', () => {
+    expect(parse('Estudar 2h')).toMatchObject({ title: 'Estudar 2h', dueTime: null, dueDate: null })
+    expect(parse('Caminhada 1h #Saúde')).toMatchObject({ title: 'Caminhada 1h', dueTime: null })
+  })
+
+  it('mas contam com "às", com minutos ou a partir das 7h', () => {
+    expect(parse('Acordar às 6h').dueTime).toBe('06:00')
+    expect(parse('Treino 6h30').dueTime).toBe('06:30')
+    expect(parse('Reunião 15h').dueTime).toBe('15:00')
+    expect(parse('Pequeno-almoço 7h').dueTime).toBe('07:00')
+    expect(parse('Voo 5 da manhã').dueTime).toBe('05:00')
+  })
+})

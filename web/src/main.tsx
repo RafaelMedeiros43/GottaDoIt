@@ -17,6 +17,7 @@ createRoot(document.getElementById('root')!).render(
     <ThemeProvider>
       <QueryClientProvider client={queryClient}>
         <BrowserRouter>
+          {/* Dentro do QueryClientProvider: ao sair, a sessão limpa os dados em memória. */}
           <AuthProvider>
             <App />
             <Toaster />

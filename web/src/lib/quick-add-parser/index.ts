@@ -67,7 +67,11 @@ function matchAt(words: Word[], i: number, today: Date, weekStart: 0 | 1): Omit<
   if (recurrence) return { kind: 'recurrence', ...recurrence }
 
   const date = matchDate(words, i, today, weekStart)
-  if (date) return { kind: 'date', ...date }
+  if (date) {
+    const next = i + date.length
+    const standsAlone = next >= words.length || matchAt(words, next, today, weekStart) !== null
+    if (!date.ambiguous || standsAlone) return { kind: 'date', length: date.length, value: date.value }
+  }
 
   const time = matchTime(words, i)
   if (time) return { kind: 'time', ...time }

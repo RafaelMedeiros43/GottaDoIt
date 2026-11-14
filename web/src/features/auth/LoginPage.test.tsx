@@ -1,22 +1,13 @@
-import { render, screen } from '@testing-library/react'
+import { screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { MemoryRouter } from 'react-router'
-import { AuthProvider } from './AuthProvider'
 import { LoginPage } from './LoginPage'
 import { tokenStore } from '@/lib/api'
 import { fakeApi } from '@/test/fake-api'
+import { renderApp } from '@/test/render'
 
 const USER = { id: 'u1', name: 'Ana', email: 'ana@example.com', timezone: 'Europe/Lisbon', week_start: 1, theme: 'system' }
 
-function renderLogin() {
-  render(
-    <MemoryRouter>
-      <AuthProvider>
-        <LoginPage />
-      </AuthProvider>
-    </MemoryRouter>,
-  )
-}
+const renderLogin = () => renderApp(<LoginPage />)
 
 describe('LoginPage', () => {
   it('entra e guarda o token', async () => {

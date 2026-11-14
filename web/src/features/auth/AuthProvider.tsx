@@ -1,3 +1,4 @@
+import { useQueryClient } from '@tanstack/react-query'
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { api, setUnauthorizedHandler, tokenStore } from '@/lib/api'
 import type { User } from '@/lib/types'
@@ -16,11 +17,16 @@ type Session = { data: User; token: string }
 const AuthContext = createContext<AuthContextValue | null>(null)
 
 export function AuthProvider({ children }: { children: ReactNode }) {
+  const queryClient = useQueryClient()
   const [user, setUser] = useState<User | null>(null)
   const [loading, setLoading] = useState(() => tokenStore.get() !== null)
 
   useEffect(() => {
-    setUnauthorizedHandler(() => setUser(null))
+    // Os dados em memória são de quem tinha sessão: saem com ela.
+    setUnauthorizedHandler(() => {
+      setUser(null)
+      queryClient.clear()
+    })
 
     if (tokenStore.get() === null) return
 
@@ -28,12 +34,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       .then(({ data }) => setUser(data))
       .catch(() => setUser(null))
       .finally(() => setLoading(false))
-  }, [])
+  }, [queryClient])
 
-  const startSession = useCallback(({ data, token }: Session) => {
-    tokenStore.set(token)
-    setUser(data)
-  }, [])
+  const startSession = useCallback(
+    ({ data, token }: Session) => {
+      queryClient.clear()
+      tokenStore.set(token)
+      setUser(data)
+    },
+    [queryClient],
+  )
 
   const value = useMemo<AuthContextValue>(
     () => ({
@@ -50,9 +60,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         await api('/auth/logout', { method: 'POST' }).catch(() => {})
         tokenStore.clear()
         setUser(null)
+        queryClient.clear()
       },
     }),
-    [user, loading, startSession],
+    [user, loading, startSession, queryClient],
   )
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>

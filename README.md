@@ -127,9 +127,15 @@ Abre com `Q` ou `Ctrl/Cmd + K`. O texto é interpretado enquanto se escreve:
 | `@urgente` | etiqueta (criada se não existir) |
 | `p1` a `p4` | prioridade |
 
-Funciona com ou sem acentos. Duas regras a saber: um dia da semana aponta
-sempre para a próxima ocorrência depois de hoje ("sexta" numa sexta-feira é
-a da semana seguinte), e uma hora sem data fica para hoje.
+Funciona com ou sem acentos. Regras a saber:
+
+- Um dia da semana aponta sempre para a próxima ocorrência depois de hoje
+  ("sexta" numa sexta-feira é a da semana seguinte).
+- Uma hora sem data fica para hoje.
+- "segunda" a "sexta" sozinhas só contam como data no fim da frase ou antes
+  de outro marcador, para "Pedir segunda via" não ganhar uma data. Com
+  "-feira", "na" ou "próxima" contam em qualquer posição.
+- "1h" a "6h" sem "às" são lidas como duração ("Estudar 2h"), não como hora.
 
 ## O que ainda não existe
 

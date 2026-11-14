@@ -4,7 +4,15 @@ import { toInt, type Word } from './normalize'
 export interface Match<T> {
   length: number
   value: T
+  /**
+   * A palavra também tem outro sentido ("segunda via", "quarta versão"):
+   * só conta como data no fim da frase ou antes de outro marcador.
+   */
+  ambiguous?: boolean
 }
+
+/** Dias da semana que também são numerais ordinais. */
+const ORDINAL_WEEKDAYS = new Set(['segunda', 'terca', 'quarta', 'quinta', 'sexta'])
 
 // As datas são tratadas como dias de calendário em UTC, sem horas nem fusos.
 
@@ -87,7 +95,13 @@ function matchBareDate(words: Word[], i: number, today: Date, weekStart: 0 | 1):
   if (isNext && b === 'semana') return { length: 2, value: nextWeekday(today, weekStart, false) }
 
   const weekday = weekdayOf(isNext ? b : a)
-  if (weekday !== null) return { length: isNext ? 2 : 1, value: nextWeekday(today, weekday, false) }
+  if (weekday !== null) {
+    return {
+      length: isNext ? 2 : 1,
+      value: nextWeekday(today, weekday, false),
+      ambiguous: !isNext && ORDINAL_WEEKDAYS.has(a!),
+    }
+  }
 
   if (a === 'dia') {
     const date = nextMonthDay(today, toInt(b) ?? 0)
@@ -131,6 +145,7 @@ function nextYearly(today: Date, month: number, day: number): Date | null {
 export function matchDate(words: Word[], i: number, today: Date, weekStart: 0 | 1): Match<Date> | null {
   if (DATE_PREPOSITIONS.has(words[i].norm) && i + 1 < words.length) {
     const match = matchBareDate(words, i + 1, today, weekStart)
+    // Com preposição ("na sexta") já não há dúvida.
     if (match) return { length: match.length + 1, value: match.value }
   }
 
@@ -151,7 +166,7 @@ function periodAt(words: Word[], i: number): 'manha' | 'tarde' | 'noite' | null 
   return period === 'manha' || period === 'tarde' || period === 'noite' ? period : null
 }
 
-function matchBareTime(words: Word[], i: number): Match<string> | null {
+function matchBareTime(words: Word[], i: number, afterPreposition: boolean): Match<string> | null {
   const word = words[i].norm
 
   if (word === 'meio-dia') return { length: 1, value: '12:00' }
@@ -168,6 +183,10 @@ function matchBareTime(words: Word[], i: number): Match<string> | null {
 
   if (!clock && !period) return null
   if (period && hours > 12) return null
+  // "Estudar 2h" é uma duração; "às 2h", "2h30" e "15h" são horas.
+  const looksLikeDuration = clock !== null && clock[2] === undefined && clock[3] === undefined && hours >= 1 && hours <= 6
+  if (looksLikeDuration && !period && !afterPreposition) return null
+
   if ((period === 'tarde' || period === 'noite') && hours < 12) hours += 12
 
   const value = formatTime(hours, minutes)
@@ -177,9 +196,9 @@ function matchBareTime(words: Word[], i: number): Match<string> | null {
 /** Hora, com a preposição que a anteceda ("às 15h", "ao meio-dia"). */
 export function matchTime(words: Word[], i: number): Match<string> | null {
   if (TIME_PREPOSITIONS.has(words[i].norm) && i + 1 < words.length) {
-    const match = matchBareTime(words, i + 1)
+    const match = matchBareTime(words, i + 1, true)
     if (match) return { length: match.length + 1, value: match.value }
   }
 
-  return matchBareTime(words, i)
+  return matchBareTime(words, i, false)
 }

@@ -11,7 +11,7 @@ export function renderApp(ui: ReactElement) {
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   })
 
-  return render(
+  const view = render(
     <QueryClientProvider client={queryClient}>
       <MemoryRouter>
         <AuthProvider>
@@ -21,4 +21,6 @@ export function renderApp(ui: ReactElement) {
       </MemoryRouter>
     </QueryClientProvider>,
   )
+
+  return { ...view, queryClient }
 }

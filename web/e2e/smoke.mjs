@@ -44,18 +44,44 @@ try {
   await task.getByText('@casa').waitFor()
   await shot('3-hoje')
 
-  // Concluir e desfazer.
-  await page.getByRole('checkbox', { name: 'Concluir "Comprar pão"' }).click()
+  const complete = () => page.getByRole('checkbox', { name: 'Concluir "Comprar pão"' }).click()
+  // Espera que o servidor responda, e falha se a resposta não for de sucesso.
+  const saved = (path) =>
+    page.waitForResponse((response) => response.url().includes(path)).then((response) => {
+      if (!response.ok()) throw new Error(`${path} respondeu ${response.status()}`)
+    })
+
+  // Concluir e desfazer: a tarefa volta, e continua lá depois de recarregar.
+  await Promise.all([saved('/complete'), complete()])
   await task.waitFor({ state: 'detached' })
   await page.getByText('Tarefa concluída').waitFor()
-  await page.getByRole('button', { name: 'Desfazer' }).click()
+  await Promise.all([saved('/reopen'), page.getByRole('button', { name: 'Desfazer' }).click()])
   await task.waitFor()
-
-  // O estado ficou guardado no servidor.
   await page.reload()
   await task.waitFor()
 
-  // Uma tarefa em atraso não se cria pelo Quick Add; aqui basta confirmar o Q.
+  // Concluir sem desfazer: depois de recarregar, a tarefa já não está em "Hoje".
+  await Promise.all([saved('/complete'), complete()])
+  await page.reload()
+  await page.getByText('Tudo feito por hoje.').waitFor()
+
+  // Criar outra, apagar e desfazer.
+  await page.keyboard.press('Control+k')
+  await field.fill('Comprar pão hoje')
+  await Promise.all([saved('/api/v1/tasks'), field.press('Enter')])
+  await task.waitFor()
+  await Promise.all([
+    page.waitForResponse((response) => response.request().method() === 'DELETE').then((response) => {
+      if (!response.ok()) throw new Error(`DELETE respondeu ${response.status()}`)
+    }),
+    page.getByRole('button', { name: 'Apagar "Comprar pão"' }).click(),
+  ])
+  await task.waitFor({ state: 'detached' })
+  await Promise.all([saved('/restore'), page.getByRole('button', { name: 'Desfazer' }).click()])
+  await page.reload()
+  await task.waitFor()
+
+  // O atalho Q também abre o Quick Add.
   await page.keyboard.press('q')
   await field.waitFor()
   await page.keyboard.press('Escape')
