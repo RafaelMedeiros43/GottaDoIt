@@ -2,9 +2,12 @@
 
 namespace Tests;
 
+use App\Models\User;
+use App\Support\RlsContext;
 use Illuminate\Foundation\Testing\DatabaseTransactions;
 use Illuminate\Foundation\Testing\TestCase as BaseTestCase;
 use Illuminate\Support\Facades\Artisan;
+use Laravel\Sanctum\Sanctum;
 
 abstract class TestCase extends BaseTestCase
 {
@@ -24,5 +27,14 @@ abstract class TestCase extends BaseTestCase
             Artisan::call('migrate:fresh', ['--database' => 'pgsql_admin', '--force' => true]);
             self::$migrated = true;
         }
+    }
+
+    /** Autentica o utilizador e define o contexto RLS para os dados criados no teste. */
+    protected function actingAsUser(User $user): static
+    {
+        Sanctum::actingAs($user);
+        RlsContext::set($user->id);
+
+        return $this;
     }
 }
