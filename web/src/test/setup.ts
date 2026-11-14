@@ -1,8 +1,11 @@
 import '@testing-library/jest-dom/vitest'
 import { cleanup } from '@testing-library/react'
+import { toast } from 'sonner'
 import { afterEach, vi } from 'vitest'
 
 afterEach(() => {
+  // Os avisos vivem num estado global do Sonner: sem isto passavam de um teste para o seguinte.
+  toast.getToasts().forEach((item) => toast.dismiss(item.id))
   cleanup()
   localStorage.clear()
   vi.restoreAllMocks()
@@ -24,3 +27,5 @@ globalThis.ResizeObserver ??= class {
 }
 Element.prototype.scrollIntoView ??= () => {}
 Element.prototype.hasPointerCapture ??= () => false
+Element.prototype.setPointerCapture ??= () => {}
+Element.prototype.releasePointerCapture ??= () => {}
