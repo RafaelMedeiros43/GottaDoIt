@@ -25,6 +25,22 @@ class Recurrence
         return self::parse($rule) !== null;
     }
 
+    /**
+     * Fixa o dia do mês numa regra mensal que não o diga ("todos os meses"
+     * criada no dia 31 passa a BYMONTHDAY=31). Sem isto, depois de um mês
+     * curto a tarefa ficava para sempre no dia 28.
+     */
+    public static function anchor(string $rule, CarbonImmutable $due): string
+    {
+        $parsed = self::parse($rule);
+
+        if ($parsed === null || $parsed['freq'] !== 'MONTHLY' || $parsed['bymonthday'] !== null) {
+            return $rule;
+        }
+
+        return $rule.';BYMONTHDAY='.$due->day;
+    }
+
     /** A primeira ocorrência depois de `$due` que não seja anterior a `$today`. */
     public static function next(string $rule, CarbonImmutable $due, CarbonImmutable $today): CarbonImmutable
     {

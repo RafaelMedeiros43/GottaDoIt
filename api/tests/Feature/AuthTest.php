@@ -102,4 +102,16 @@ class AuthTest extends TestCase
         $this->app['auth']->forgetGuards();
         $this->withToken($token)->getJson('/api/v1/me')->assertUnauthorized();
     }
+
+
+    public function test_login_attempts_are_rate_limited(): void
+    {
+        $attempt = fn () => $this->postJson('/api/v1/auth/login', ['email' => 'ana@example.com', 'password' => 'errada-123']);
+
+        for ($i = 0; $i < 10; $i++) {
+            $attempt()->assertStatus(422);
+        }
+
+        $attempt()->assertStatus(429);
+    }
 }

@@ -14,6 +14,13 @@ return Application::configure(basePath: dirname(__DIR__))
     )
     ->withMiddleware(function (Middleware $middleware): void {
         $middleware->alias(['rls' => \App\Http\Middleware\SetRlsContext::class]);
+
+        // O contexto RLS tem de existir antes de as rotas carregarem modelos
+        // (`tasks/{task}`); sem ele a base de dados esconde a linha e dá 404.
+        $middleware->prependToPriorityList(
+            before: \Illuminate\Routing\Middleware\SubstituteBindings::class,
+            prepend: \App\Http\Middleware\SetRlsContext::class,
+        );
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         $exceptions->shouldRenderJsonWhen(

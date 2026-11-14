@@ -9,8 +9,11 @@ use App\Http\Controllers\Api\V1\TaskController;
 use Illuminate\Support\Facades\Route;
 
 Route::prefix('v1')->group(function () {
-    Route::post('auth/register', [AuthController::class, 'register']);
-    Route::post('auth/login', [AuthController::class, 'login']);
+    // No máximo 10 tentativas por minuto e por endereço, contra adivinhação de palavras-passe.
+    Route::middleware('throttle:10,1')->group(function () {
+        Route::post('auth/register', [AuthController::class, 'register']);
+        Route::post('auth/login', [AuthController::class, 'login']);
+    });
 
     // Tudo o que toca em dados do utilizador corre com o contexto RLS definido.
     Route::middleware(['auth:sanctum', 'rls'])->group(function () {

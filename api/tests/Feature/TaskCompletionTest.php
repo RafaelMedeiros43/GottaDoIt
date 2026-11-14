@@ -140,4 +140,26 @@ class TaskCompletionTest extends TestCase
         $this->postJson("/api/v1/tasks/{$task->id}/complete")->assertNotFound();
         $this->postJson("/api/v1/tasks/{$task->id}/reopen")->assertNotFound();
     }
+
+
+    public function test_monthly_task_created_on_the_31st_returns_to_the_31st_after_february(): void
+    {
+        $this->travelTo('2027-01-31T10:00:00Z');
+        $id = $this->postJson('/api/v1/tasks', [
+            'title' => 'Fecho do mês', 'due_date' => '2027-01-31', 'recurrence_rule' => 'FREQ=MONTHLY',
+        ])->assertCreated()->assertJsonPath('data.recurrence_rule', 'FREQ=MONTHLY;BYMONTHDAY=31')->json('data.id');
+
+        $this->postJson("/api/v1/tasks/$id/complete")->assertJsonPath('data.due_date', '2027-02-28');
+
+        $this->travelTo('2027-02-28T10:00:00Z');
+        $this->postJson("/api/v1/tasks/$id/complete")->assertJsonPath('data.due_date', '2027-03-31');
+    }
+
+    public function test_adding_a_monthly_rule_to_an_existing_task_anchors_it_to_the_due_day(): void
+    {
+        $task = Task::factory()->create(['due_date' => '2027-01-30']);
+
+        $this->patchJson("/api/v1/tasks/{$task->id}", ['recurrence_rule' => 'FREQ=MONTHLY;INTERVAL=2'])
+            ->assertOk()->assertJsonPath('data.recurrence_rule', 'FREQ=MONTHLY;INTERVAL=2;BYMONTHDAY=30');
+    }
 }

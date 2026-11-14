@@ -6,6 +6,11 @@
 -- Isolamento por utilizador: em cada pedido a API define, dentro de uma
 -- transação, `set_config('app.user_id', '<uuid>', true)`. As políticas RLS
 -- comparam `user_id` com esse valor. Sem valor definido, não se vê nada.
+--
+-- As chaves estrangeiras entre tabelas de dados são compostas com `user_id`
+-- (por exemplo (user_id, project_id) → projects (user_id, id)). As verificações
+-- de integridade do PostgreSQL ignoram o RLS, por isso é esta composição que
+-- impede uma linha de um utilizador de apontar para uma linha de outro.
 
 -- ---------------------------------------------------------------------------
 -- Utilizadores e tokens (sem RLS: lidos antes de se saber quem é o utilizador)
@@ -50,7 +55,7 @@ CREATE INDEX personal_access_tokens_tokenable_index
 CREATE TABLE projects (
     id          uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id     uuid        NOT NULL REFERENCES users (id) ON DELETE CASCADE,
-    parent_id   uuid        REFERENCES projects (id) ON DELETE CASCADE,
+    parent_id   uuid,
     name        text        NOT NULL,
     color       text        NOT NULL DEFAULT '#808080' CHECK (color ~ '^#[0-9a-fA-F]{6}$'),
     icon        text,
@@ -59,7 +64,9 @@ CREATE TABLE projects (
     position    integer     NOT NULL DEFAULT 0,
     created_at  timestamptz NOT NULL DEFAULT now(),
     updated_at  timestamptz NOT NULL DEFAULT now(),
-    CHECK (parent_id IS NULL OR parent_id <> id)
+    CHECK (parent_id IS NULL OR parent_id <> id),
+    UNIQUE (user_id, id),
+    FOREIGN KEY (user_id, parent_id) REFERENCES projects (user_id, id) ON DELETE CASCADE
 );
 
 CREATE INDEX projects_user_parent_position_index ON projects (user_id, parent_id, position);
@@ -67,11 +74,13 @@ CREATE INDEX projects_user_parent_position_index ON projects (user_id, parent_id
 CREATE TABLE sections (
     id         uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id    uuid        NOT NULL REFERENCES users (id) ON DELETE CASCADE,
-    project_id uuid        NOT NULL REFERENCES projects (id) ON DELETE CASCADE,
+    project_id uuid        NOT NULL,
     name       text        NOT NULL,
     position   integer     NOT NULL DEFAULT 0,
     created_at timestamptz NOT NULL DEFAULT now(),
-    updated_at timestamptz NOT NULL DEFAULT now()
+    updated_at timestamptz NOT NULL DEFAULT now(),
+    UNIQUE (user_id, id),
+    FOREIGN KEY (user_id, project_id) REFERENCES projects (user_id, id) ON DELETE CASCADE
 );
 
 CREATE INDEX sections_project_position_index ON sections (project_id, position);
@@ -83,9 +92,9 @@ CREATE INDEX sections_project_position_index ON sections (project_id, position);
 CREATE TABLE tasks (
     id              uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id         uuid        NOT NULL REFERENCES users (id) ON DELETE CASCADE,
-    project_id      uuid        REFERENCES projects (id) ON DELETE CASCADE, -- NULL = Caixa de Entrada
-    section_id      uuid        REFERENCES sections (id) ON DELETE SET NULL,
-    parent_task_id  uuid        REFERENCES tasks (id) ON DELETE CASCADE,    -- subtarefas recursivas
+    project_id      uuid,                                                    -- NULL = Caixa de Entrada
+    section_id      uuid,
+    parent_task_id  uuid,                                                    -- subtarefas recursivas
     title           text        NOT NULL CHECK (length(title) BETWEEN 1 AND 500),
     description     text,                                                    -- Markdown básico
     due_date        date,                                                    -- no fuso do utilizador
@@ -101,7 +110,11 @@ CREATE TABLE tasks (
     updated_at      timestamptz NOT NULL DEFAULT now(),
     CONSTRAINT tasks_time_needs_date CHECK (due_time IS NULL OR due_date IS NOT NULL),
     CONSTRAINT tasks_recurrence_needs_date CHECK (recurrence_rule IS NULL OR due_date IS NOT NULL),
-    CONSTRAINT tasks_not_own_parent CHECK (parent_task_id IS NULL OR parent_task_id <> id)
+    CONSTRAINT tasks_not_own_parent CHECK (parent_task_id IS NULL OR parent_task_id <> id),
+    UNIQUE (user_id, id),
+    FOREIGN KEY (user_id, project_id) REFERENCES projects (user_id, id) ON DELETE CASCADE,
+    FOREIGN KEY (user_id, section_id) REFERENCES sections (user_id, id) ON DELETE SET NULL (section_id),
+    FOREIGN KEY (user_id, parent_task_id) REFERENCES tasks (user_id, id) ON DELETE CASCADE
 );
 
 -- "Hoje", "Em atraso" e "Em breve": tarefas abertas por utilizador e data.
@@ -129,16 +142,19 @@ CREATE TABLE labels (
     name       text        NOT NULL,
     color      text        NOT NULL DEFAULT '#808080' CHECK (color ~ '^#[0-9a-fA-F]{6}$'),
     created_at timestamptz NOT NULL DEFAULT now(),
-    updated_at timestamptz NOT NULL DEFAULT now()
+    updated_at timestamptz NOT NULL DEFAULT now(),
+    UNIQUE (user_id, id)
 );
 
 CREATE UNIQUE INDEX labels_user_name_unique ON labels (user_id, lower(name));
 
 CREATE TABLE task_labels (
-    task_id  uuid NOT NULL REFERENCES tasks (id) ON DELETE CASCADE,
-    label_id uuid NOT NULL REFERENCES labels (id) ON DELETE CASCADE,
+    task_id  uuid NOT NULL,
+    label_id uuid NOT NULL,
     user_id  uuid NOT NULL REFERENCES users (id) ON DELETE CASCADE,
-    PRIMARY KEY (task_id, label_id)
+    PRIMARY KEY (task_id, label_id),
+    FOREIGN KEY (user_id, task_id) REFERENCES tasks (user_id, id) ON DELETE CASCADE,
+    FOREIGN KEY (user_id, label_id) REFERENCES labels (user_id, id) ON DELETE CASCADE
 );
 
 CREATE INDEX task_labels_label_index ON task_labels (label_id);
@@ -150,7 +166,7 @@ CREATE INDEX task_labels_label_index ON task_labels (label_id);
 CREATE TABLE reminders (
     id             uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id        uuid        NOT NULL REFERENCES users (id) ON DELETE CASCADE,
-    task_id        uuid        NOT NULL REFERENCES tasks (id) ON DELETE CASCADE,
+    task_id        uuid        NOT NULL,
     type           text        NOT NULL CHECK (type IN ('absolute', 'relative')),
     remind_at      timestamptz,           -- absolute: data/hora exata
     minutes_before integer,               -- relative: minutos antes do vencimento
@@ -161,7 +177,8 @@ CREATE TABLE reminders (
     CONSTRAINT reminders_type_fields CHECK (
         (type = 'absolute' AND remind_at IS NOT NULL AND minutes_before IS NULL)
         OR (type = 'relative' AND minutes_before IS NOT NULL AND minutes_before >= 0 AND remind_at IS NULL)
-    )
+    ),
+    FOREIGN KEY (user_id, task_id) REFERENCES tasks (user_id, id) ON DELETE CASCADE
 );
 
 -- O worker corre a cada minuto: lembretes por enviar, por ordem de disparo.
@@ -175,12 +192,13 @@ CREATE INDEX reminders_task_index ON reminders (task_id);
 CREATE TABLE activity_log (
     id         uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id    uuid        NOT NULL REFERENCES users (id) ON DELETE CASCADE,
-    task_id    uuid        REFERENCES tasks (id) ON DELETE SET NULL,
+    task_id    uuid,
     action     text        NOT NULL CHECK (action IN
         ('created', 'updated', 'completed', 'reopened', 'deleted', 'restored', 'rescheduled')),
     payload    jsonb       NOT NULL DEFAULT '{}'::jsonb,
     -- clock_timestamp() e não now(): várias linhas da mesma transação ficam por ordem.
-    created_at timestamptz NOT NULL DEFAULT clock_timestamp()
+    created_at timestamptz NOT NULL DEFAULT clock_timestamp(),
+    FOREIGN KEY (user_id, task_id) REFERENCES tasks (user_id, id) ON DELETE SET NULL (task_id)
 );
 
 CREATE INDEX activity_log_user_created_index ON activity_log (user_id, created_at DESC);

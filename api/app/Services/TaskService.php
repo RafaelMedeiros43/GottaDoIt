@@ -38,7 +38,9 @@ class TaskService
             ->max('position') ?? 0) + 1;
 
         try {
-            $task = Task::create($attributes);
+            $task = new Task($attributes);
+            $this->anchorRecurrence($task);
+            $task->save();
         } catch (UniqueConstraintViolationException) {
             throw ValidationException::withMessages(['id' => 'Já existe uma tarefa com este identificador.']);
         }
@@ -58,7 +60,9 @@ class TaskService
             $data['section_id'] ??= null;
         }
 
-        $task->fill(Arr::only($data, self::TRACKED))->save();
+        $task->fill(Arr::only($data, self::TRACKED));
+        $this->anchorRecurrence($task);
+        $task->save();
 
         if (array_key_exists('label_ids', $data)) {
             $this->syncLabels($task, $data['label_ids']);
@@ -169,6 +173,13 @@ class TaskService
     public function log(Task $task, string $action, array $payload = []): ActivityLog
     {
         return ActivityLog::create(['task_id' => $task->id, 'action' => $action, 'payload' => $payload]);
+    }
+
+    private function anchorRecurrence(Task $task): void
+    {
+        if ($task->recurrence_rule !== null && $task->due_date !== null) {
+            $task->recurrence_rule = Recurrence::anchor($task->recurrence_rule, $task->due_date);
+        }
     }
 
     private function snapshot(Task $task): array

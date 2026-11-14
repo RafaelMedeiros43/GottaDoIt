@@ -67,4 +67,47 @@ class SchemaTest extends TestCase
             'id' => (string) Str::uuid(), 'user_id' => $userId, 'title' => 'Sem data', 'due_time' => '10:00',
         ]);
     }
+
+
+    public function test_foreign_keys_reject_rows_of_another_user(): void
+    {
+        [$ana, $bruno] = [(string) Str::uuid(), (string) Str::uuid()];
+        foreach ([$ana => 'ana@example.com', $bruno => 'bruno@example.com'] as $id => $email) {
+            DB::table('users')->insert(['id' => $id, 'name' => 'X', 'email' => $email, 'password' => 'x']);
+        }
+
+        $project = (string) Str::uuid();
+        DB::select("select set_config('app.user_id', ?, true)", [$bruno]);
+        DB::table('projects')->insert(['id' => $project, 'user_id' => $bruno, 'name' => 'Do Bruno']);
+
+        // Mesmo que a validação da API falhasse, a base de dados não deixa
+        // uma tarefa da Ana apontar para um projeto do Bruno.
+        DB::select("select set_config('app.user_id', ?, true)", [$ana]);
+
+        $this->expectException(QueryException::class);
+        $this->expectExceptionMessage('foreign key');
+
+        DB::table('tasks')->insert([
+            'id' => (string) Str::uuid(), 'user_id' => $ana, 'title' => 'X', 'project_id' => $project,
+        ]);
+    }
+
+    public function test_deleting_a_section_keeps_its_tasks(): void
+    {
+        $user = (string) Str::uuid();
+        DB::table('users')->insert(['id' => $user, 'name' => 'X', 'email' => 'x@example.com', 'password' => 'x']);
+        DB::select("select set_config('app.user_id', ?, true)", [$user]);
+        [$project, $section, $task] = [(string) Str::uuid(), (string) Str::uuid(), (string) Str::uuid()];
+        DB::table('projects')->insert(['id' => $project, 'user_id' => $user, 'name' => 'P']);
+        DB::table('sections')->insert(['id' => $section, 'user_id' => $user, 'project_id' => $project, 'name' => 'S']);
+        DB::table('tasks')->insert([
+            'id' => $task, 'user_id' => $user, 'title' => 'X', 'project_id' => $project, 'section_id' => $section,
+        ]);
+
+        DB::table('sections')->where('id', $section)->delete();
+
+        $row = DB::table('tasks')->where('id', $task)->first();
+        $this->assertNull($row->section_id);
+        $this->assertSame($user, $row->user_id);
+    }
 }

@@ -66,4 +66,14 @@ class RecurrenceTest extends TestCase
 
         Recurrence::next('FREQ=HOURLY', CarbonImmutable::parse('2026-11-14'), CarbonImmutable::parse('2026-11-14'));
     }
+
+    public function test_anchor_fixes_the_day_of_bare_monthly_rules_only(): void
+    {
+        $due = CarbonImmutable::parse('2027-01-31');
+
+        $this->assertSame('FREQ=MONTHLY;BYMONTHDAY=31', Recurrence::anchor('FREQ=MONTHLY', $due));
+        $this->assertSame('FREQ=MONTHLY;BYMONTHDAY=1', Recurrence::anchor('FREQ=MONTHLY;BYMONTHDAY=1', $due));
+        $this->assertSame('FREQ=DAILY', Recurrence::anchor('FREQ=DAILY', $due));
+        $this->assertSame('FREQ=HOURLY', Recurrence::anchor('FREQ=HOURLY', $due));
+    }
 }
