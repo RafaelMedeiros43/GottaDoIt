@@ -2,7 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { SAVE_ERROR, taskToastId } from './undo-toast'
 import { api } from '@/lib/api'
-import type { Label, Project, Task } from '@/lib/types'
+import type { Label, NewTask, Project, Task } from '@/lib/types'
 
 export interface TodayResponse {
   data: Task[]
@@ -145,5 +145,42 @@ export function useRescheduleTasks() {
       api('/tasks/reschedule', { method: 'POST', body: { task_ids: taskIds, due_date: dueDate } }),
     apply: (tasks, { taskIds, dueDate }) =>
       tasks.map((task) => (taskIds.includes(task.id) ? { ...task, due_date: dueDate } : task)),
+  })
+}
+
+/** A tarefa tal como aparece no ecrã antes de o servidor responder. */
+function optimisticTask(input: NewTask): Task {
+  const now = new Date().toISOString()
+
+  return {
+    id: input.id,
+    title: input.title,
+    description: null,
+    due_date: input.due_date,
+    due_time: input.due_time,
+    recurrence_rule: input.recurrence_rule,
+    recurrence_text: input.recurrence_text,
+    priority: input.priority,
+    is_completed: false,
+    completed_at: null,
+    position: Number.MAX_SAFE_INTEGER,
+    project_id: null,
+    section_id: null,
+    parent_task_id: null,
+    label_ids: [],
+    created_at: now,
+    updated_at: now,
+  }
+}
+
+export function useCreateTask() {
+  return useOptimisticTaskMutation<NewTask>({
+    mutationFn: (input) => api('/tasks', { method: 'POST', body: input }),
+    // Só entra em "Hoje" o que vence hoje ou já está em atraso.
+    apply: (tasks, input, today) =>
+      input.due_date !== null && input.due_date <= today ? [...tasks, optimisticTask(input)] : tasks,
+    toastId: (input) => taskToastId(input.id),
+    // O Quick Add pode ter criado um projeto ou etiquetas.
+    alsoInvalidate: [['projects'], ['labels']],
   })
 }

@@ -13,7 +13,7 @@ type Handler = (call: RecordedCall) => { status?: number; body?: unknown } | und
  * Substitui `fetch` por um servidor falso. Cada rota é "MÉTODO /caminho"
  * (sem o prefixo /api/v1); a resposta por omissão é 200 com o corpo dado.
  */
-export function fakeApi(routes: Record<string, Handler | unknown>) {
+export function fakeApi(routes: Record<string, Handler | Record<string, unknown>>) {
   const calls: RecordedCall[] = []
 
   const fetchMock = vi.fn(async (url: string, init: RequestInit = {}) => {
@@ -28,7 +28,7 @@ export function fakeApi(routes: Record<string, Handler | unknown>) {
     const route = routes[`${call.method} ${call.path}`]
     if (route === undefined) throw new Error(`Pedido inesperado: ${call.method} ${call.path}`)
 
-    const result = typeof route === 'function' ? ((route as Handler)(call) ?? {}) : { body: route }
+    const result = typeof route === 'function' ? (route(call) ?? {}) : { body: route }
     const status = result.status ?? 200
 
     return new Response(status === 204 ? null : JSON.stringify(result.body ?? {}), {
